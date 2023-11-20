@@ -1,9 +1,9 @@
 # 載入套件
-import pandas as pd
-from sklearn.cluster import KMeans
+import geopy
 import matplotlib.pyplot as plt
 import numpy as np
-import geopy
+import pandas as pd
+from sklearn.cluster import KMeans
 
 # 讀取資料
 df = pd.read_csv("data/taipei_traffic_accidents.csv")
@@ -24,7 +24,7 @@ X = df[["Longitude", "Latitude"]]
 X.columns = ["Longitude", "Latitude"]
 
 # 使用 KMeans 進行集群分析
-kmeans = KMeans(n_clusters=8, n_init=10, random_state=0)
+kmeans = KMeans(n_clusters=16, n_init=10, random_state=0)
 kmeans.fit(X)
 
 # 將集群標籤添加到原始 DataFrame
@@ -37,18 +37,37 @@ centers = kmeans.cluster_centers_
 # 中心按照事故數量排序
 centers = centers[hot_zones.index]
 
+# 將中心點和事故總數轉換為 numpy array
+centers_array = np.array(centers)
+hot_zones_array = np.array(hot_zones)
+
+# 使用 matplotlib 繪製 scatter plot
+plt.figure(figsize=(10, 6))
+plt.scatter(centers_array[:, 0], centers_array[:, 1], c=hot_zones_array, cmap="viridis")
+
 # 根據經緯度查詢地址
 geolocator = geopy.Nominatim(user_agent="cluster_traffic_accidents")
 
+# 為每個中心點添加地址標籤
 for i in range(len(centers)):
-    # 反轉經緯度查詢地址
+    # 經緯度順序要調換
     centers[i][0], centers[i][1] = centers[i][1], centers[i][0]
-    address = geolocator.reverse(centers[i], language="zh-TW", exactly_one=True)
-    print("Cluster", i)
-    print("Center:", centers[i])
-    print("Address:", address.address)
-    print("Total accidents:", hot_zones[i])
-    print()
+    # 反轉經緯度查詢地址，並獲取詳細的地址資訊
+    address = geolocator.reverse(
+        centers[i], language="en-US", exactly_one=True, addressdetails=True
+    )
+    # 從詳細的地址中選擇需要的部分
+    address_str = ", ".join([address.raw["address"].get(key, "") for key in ["suburb"]])
+    # 移除 "District" 字樣
+    address_str = address_str.replace(" District", "")
+    # 在圖表上添加地址標籤
+    plt.annotate(address_str, (centers_array[i, 0], centers_array[i, 1]))
+
+plt.colorbar(label="Total accidents")
+plt.xlabel("Longitude")
+plt.ylabel("Latitude")
+plt.title("Accident hot zones")
+plt.show()
 
 # 使用 matplotlib 繪製散點圖
 plt.scatter(df["Longitude"], df["Latitude"], c=df["Cluster"], cmap="viridis", s=10)
@@ -59,17 +78,4 @@ plt.show()
 plt.scatter(centers[:, 0], centers[:, 1], c="black", s=200, alpha=0.5)
 plt.title("Scatter plot of Clusters with Centroids")
 # 圖會呈現隨機分布
-plt.show()
-
-# 繪製集群邊界
-x_min, x_max = df["Longitude"].min() - 1, df["Longitude"].max() + 1
-y_min, y_max = df["Latitude"].min() - 1, df["Latitude"].max() + 1
-
-xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.1), np.arange(y_min, y_max, 0.1))
-Z = kmeans.predict(np.c_[xx.ravel(), yy.ravel()])
-Z = Z.reshape(xx.shape)
-
-plt.contourf(xx, yy, Z, alpha=0.4)
-plt.scatter(df["Longitude"], df["Latitude"], c=df["Cluster"])
-plt.title("Contour plot of Clusters with Centroids")
 plt.show()
